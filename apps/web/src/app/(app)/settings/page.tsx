@@ -9,6 +9,7 @@ import {
   saveEmailConnector,
   saveWebhookConnector,
 } from "./actions.js";
+import { VoiceDemo } from "./VoiceDemo.js";
 
 export const dynamic = "force-dynamic";
 
@@ -177,11 +178,13 @@ export default async function SettingsPage() {
       {/* Voice */}
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Voice caller</h2>
-        <p className="muted">
-          Inbound + outbound AI voice calls (Exotel/Plivo). Structure is in place; live calling
-          turns on once a telephony account and number are connected — see the Voice panel below
-          once M5 is enabled.
+        <p className="muted small">
+          Inbound + outbound AI voice calls (Exotel/Plivo) driven by the same agent core. Live
+          PSTN audio turns on once <code>VOICE_ACCOUNT_SID</code> / <code>VOICE_API_TOKEN</code> and
+          a DLT-compliant number are configured. Try a simulated call below — the AI runs the same
+          tools (pricing, quote, payment link) it uses in chat.
         </p>
+        <VoiceDemo />
       </div>
     </>
   );

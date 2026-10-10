@@ -10,6 +10,8 @@ export * from "./whatsapp.js";
 export * from "./instagram.js";
 export * from "./email.js";
 export * from "./webhook.js";
+export * from "./voice/types.js";
+export { voiceProvider, TelephonyProvider } from "./voice/exotel.js";
 
 /** Registry of implemented channel providers. */
 const REGISTRY: Partial<Record<ChannelType, ChannelProvider>> = {

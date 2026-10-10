@@ -17,7 +17,7 @@ import {
   createOrderShipment,
   refreshTracking,
 } from "@autochat/commerce";
-import { processScreenshotImport, confirmScreenshotImport, sendCampaign } from "@autochat/engine";
+import { processScreenshotImport, confirmScreenshotImport, sendCampaign, runMockVoiceCall } from "@autochat/engine";
 import { putObject } from "@autochat/core/storage";
 
 async function main() {
@@ -108,6 +108,16 @@ async function main() {
   console.log("\nCampaign:");
   console.log(`  audience ${campaignResult.audience}, sent ${campaignResult.sent}, failed ${campaignResult.failed}`);
 
+  // ── M5: voice call (mock) ─────────────────────────────────────────────
+  const voice = confirmed
+    ? await runMockVoiceCall(ws.id, confirmed.contactId, [
+        "Hi, I want branded water for my cafe.",
+        "What's the price for 500ml glass?",
+      ])
+    : null;
+  console.log("\nVoice (mock) call:");
+  voice?.turns.forEach((t) => console.log(`  🗣️ ${t.caller}\n  🤖 ${t.agent}`));
+
   console.log("\nAssertions:");
   const checks: [string, boolean][] = [
     ["inbound stored", messages.some((m) => m.sender === "contact")],
@@ -126,6 +136,7 @@ async function main() {
     ["import created conversation", !!confirmed?.conversationId],
     ["import AI replied", importMsgs.some((m) => m.sender === "ai")],
     ["campaign sent to audience", campaignResult.audience > 0 && campaignResult.sent > 0],
+    ["voice call ran with agent replies", !!voice && voice.turns.length === 2 && voice.turns.every((t) => t.agent.length > 0)],
   ];
   let ok = true;
   for (const [name, pass] of checks) {

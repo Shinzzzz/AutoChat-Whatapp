@@ -9,9 +9,12 @@ unbranded by design (branding is a per-workspace setting), so it can be resold.
 The first workspace is **AquaMedia** (custom-branded bottled water). The commerce layer is
 pluggable, so other businesses plug in their own storefront later.
 
-> Status: **Milestone M0 + M1.** WhatsApp + AI agent + real-time inbox + CRM + pricing admin
-> are live. Everything runs in **mock mode** until real credentials are added, so the whole
-> flow is demonstrable with no external accounts. See `MILESTONES` below.
+> Status: **M0–M5 built.** WhatsApp/Instagram/Email/webhook channels, the Claude agent,
+> real-time inbox, CRM, pricing admin, the full quote→order→payment→invoice→shipment flow,
+> screenshot import, campaigns and the voice caller are all in. Everything runs in **mock
+> mode** until real credentials are added, so the whole flow is demonstrable with no external
+> accounts. (Live PSTN voice audio needs a telephony account + number; the rest is live once
+> its keys are set.) See **Milestones** below.
 
 ---
 
@@ -103,10 +106,18 @@ All credentials are optional; add them in **Settings** (encrypted at rest) or vi
 - **M1** — WhatsApp connector, Claude agent + tools, real-time inbox, CRM, pricing admin,
   needs-human handoff. ✅
 - **M2** — full commerce: Razorpay payment links, Shiprocket tracking, quotation PDF + GST
-  invoice, orders admin.
-- **M3** — Instagram + Email channels, screenshot-import (Claude vision).
-- **M4** — campaigns (push to buy) + analytics.
-- **M5** — voice caller (Exotel/Plivo + streaming STT/TTS on the same agent core).
+  invoice, orders admin (price/accept/advance/cancel). ✅
+- **M3** — Instagram + Email + generic-webhook channels, WhatsApp media → vision,
+  screenshot-import (Claude vision → confirm → AI takeover). ✅
+- **M4** — campaigns (push to buy) with audience segments + per-channel send, dashboard
+  analytics (7-day leads, AI-handled %). ✅
+- **M5** — voice caller: Exotel/Plivo adapter, outbound-call bridge reusing the agent core,
+  call webhook, Settings demo. Full structure + mock call runner; live PSTN audio needs a
+  telephony account + number. ✅
+
+Run `pnpm --filter @autochat/worker run smoke` to exercise the whole product end-to-end
+(ingest → AI → quote → price → pay → invoice → ship → track → screenshot import → campaign →
+voice) against local Postgres + Redis.
 
 See the implementation plan for the full design.
 

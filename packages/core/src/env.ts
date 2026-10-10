@@ -36,6 +36,12 @@ const EnvSchema = z.object({
   AWS_REGION: z.string().default("ap-south-1"),
   S3_BUCKET: z.string().optional(),
   SES_FROM_EMAIL: z.string().optional(),
+
+  // Voice telephony (Exotel/Plivo). Absent => voice runs in MOCK mode (M5).
+  VOICE_PROVIDER: z.enum(["exotel", "plivo"]).default("exotel"),
+  VOICE_ACCOUNT_SID: z.string().optional(),
+  VOICE_API_TOKEN: z.string().optional(),
+  VOICE_CALLER_ID: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -64,4 +70,5 @@ export const mockFlags = (env: Env = getEnv()) => ({
   shiprocket: !(env.SHIPROCKET_EMAIL && env.SHIPROCKET_PASSWORD),
   email: !env.SES_FROM_EMAIL,
   storage: !env.S3_BUCKET,
+  voice: !(env.VOICE_ACCOUNT_SID && env.VOICE_API_TOKEN),
 });

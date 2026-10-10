@@ -10,6 +10,7 @@ export const QUEUES = {
   campaign: "campaign-drip",
   tracking: "tracking-poll",
   screenshot: "screenshot-import",
+  voiceCall: "voice-call",
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
