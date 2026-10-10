@@ -1,0 +1,22 @@
+{
+  "name": "@autochat/infra",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AWS CDK infrastructure for AutoChat (standalone — not part of the pnpm workspace)",
+  "bin": { "autochat-infra": "bin/autochat.js" },
+  "scripts": {
+    "build": "tsc",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy",
+    "diff": "cdk diff"
+  },
+  "devDependencies": {
+    "aws-cdk": "2.173.4",
+    "typescript": "5.7.3",
+    "@types/node": "22.10.5"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.173.4",
+    "constructs": "10.4.2"
+  }
+}

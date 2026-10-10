@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - name: Test
+        run: pnpm -r test
+
+      - name: Build web
+        run: pnpm --filter @autochat/web build
+        env:
+          # Build needs no live services (pages are dynamic); supply inert values.
+          AUTH_SECRET: ci-build-secret-ci-build-secret-000000
+          APP_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"

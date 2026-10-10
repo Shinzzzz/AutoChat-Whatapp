@@ -1,0 +1,518 @@
+// AutoChat — multi-tenant schema. Every tenant-owned row carries workspaceId.
+// Datastore: PostgreSQL (AWS RDS / Aurora Serverless v2 in production).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────── Enums ───────────────────────────
+
+enum ChannelType {
+  whatsapp
+  instagram
+  email
+  webhook
+  voice
+}
+
+enum ConnectorStatus {
+  connected
+  disconnected
+  error
+  token_expiring
+  coming_soon
+}
+
+enum MessageDirection {
+  inbound
+  outbound
+}
+
+enum MessageSender {
+  contact
+  ai
+  human
+  system
+}
+
+enum MessageContentType {
+  text
+  image
+  file
+  audio
+  video
+}
+
+enum DeliveryStatus {
+  pending
+  sent
+  delivered
+  read
+  failed
+}
+
+enum ConversationStatus {
+  open
+  ai_handling
+  needs_human
+  snoozed
+  closed
+}
+
+enum ContactStage {
+  lead
+  qualified
+  quoted
+  customer
+  repeat
+  lost
+}
+
+enum OrderStage {
+  awaiting_review
+  awaiting_acceptance
+  approved
+  design_review
+  in_production
+  dispatched
+  delivered
+  cancelled
+}
+
+enum QuoteStatus {
+  draft
+  sent
+  accepted
+  rejected
+  expired
+}
+
+enum Role {
+  owner
+  admin
+  agent
+}
+
+enum AiAutonomy {
+  full_auto // AI acts on everything within guardrails
+  assist // AI drafts, human approves before sending
+  off // AI silent; humans only
+}
+
+enum CampaignStatus {
+  draft
+  scheduled
+  sending
+  sent
+  paused
+}
+
+enum ImportStatus {
+  pending
+  extracted
+  confirmed
+  failed
+}
+
+// ─────────────────────────── Tenancy & auth ───────────────────────────
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // White-label branding (no fixed brand ships; all per-workspace).
+  brandName    String  @default("AutoChat")
+  logoUrl      String?
+  primaryColor String  @default("#4f46e5")
+  accentColor  String  @default("#06b6d4")
+  customDomain String?
+
+  memberships      Membership[]
+  connectors       ChannelConnector[]
+  contacts         Contact[]
+  conversations    Conversation[]
+  messages         Message[]
+  orders           Order[]
+  pricingRules     PricingRule[]
+  quotes           Quote[]
+  payments         Payment[]
+  shipments        Shipment[]
+  campaigns        Campaign[]
+  screenshots      ScreenshotImport[]
+  knowledgeDocs    KnowledgeDoc[]
+  webhookEndpoints WebhookEndpoint[]
+  apiKeys          ApiKey[]
+  auditEvents      AuditEvent[]
+  aiConfig         AiConfig?
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime     @default(now())
+  memberships  Membership[]
+}
+
+model Membership {
+  id          String    @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        Role      @default(agent)
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+// ─────────────────────────── Channels ───────────────────────────
+
+model ChannelConnector {
+  id          String          @id @default(cuid())
+  workspaceId String
+  type        ChannelType
+  label       String
+  status      ConnectorStatus @default(disconnected)
+  // Encrypted JSON blob of provider credentials (AES-256-GCM via @autochat/core).
+  encryptedConfig String?
+  // Non-secret, displayable metadata (phone number, handle, last error...).
+  meta        Json            @default("{}")
+  lastCheckAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  @@unique([workspaceId, type])
+  @@index([workspaceId])
+}
+
+// ─────────────────────────── CRM ───────────────────────────
+
+model Contact {
+  id           String       @id @default(cuid())
+  workspaceId  String
+  name         String?
+  phones       String[]     @default([])
+  emails       String[]     @default([])
+  // { instagram?: string, ... }
+  handles      Json         @default("{}")
+  stage        ContactStage @default(lead)
+  tags         String[]     @default([])
+  source       String? // "whatsapp", "screenshot-import", "campaign", ...
+  score        Int          @default(0)
+  customFields Json         @default("{}")
+  consent      Json         @default("{}") // { whatsapp: bool, email: bool, calls: bool }
+  notes        String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  orders        Order[]
+  quotes        Quote[]
+
+  @@index([workspaceId, stage])
+  @@index([workspaceId])
+}
+
+model Conversation {
+  id           String             @id @default(cuid())
+  workspaceId  String
+  contactId    String
+  connectorId  String?
+  channel      ChannelType
+  status       ConversationStatus @default(open)
+  assigneeId   String? // userId of the human who took over, if any
+  unreadCount  Int                @default(0)
+  lastMessageAt     DateTime?
+  lastMessagePreview String?
+  // Running summary the AI maintains to keep context cheap (prompt caching).
+  aiSummary    String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact   Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  connector ChannelConnector? @relation(fields: [connectorId], references: [id])
+  messages  Message[]
+  orders    Order[]
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, lastMessageAt])
+  @@index([contactId])
+}
+
+model Message {
+  id                String             @id @default(cuid())
+  workspaceId       String
+  conversationId    String
+  direction         MessageDirection
+  sender            MessageSender
+  contentType       MessageContentType @default(text)
+  text              String?
+  media             Json               @default("[]") // MediaRef[]
+  providerMessageId String?
+  deliveryStatus    DeliveryStatus     @default(pending)
+  // AI metadata: tool calls made, model, tokens, confidence.
+  aiMeta            Json?
+  createdAt         DateTime           @default(now())
+
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, providerMessageId])
+  @@index([workspaceId])
+  @@index([conversationId, createdAt])
+}
+
+// ─────────────────────────── Commerce (full build in M2) ───────────────────────────
+
+model PricingRule {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  model         String // "vanity" | "ad_subsidized"
+  size          String // "250ml" | "500ml" | "1l"
+  material      String // "pet" | "glass"
+  water         String // "ro" | "himalayan"
+  shape         String? // 1L glass only: round|square|peace|zen|pyramid
+  unitPricePaise Int // store money in paise to avoid float errors
+  minQty        Int
+  turnaroundDays Int
+  active        Boolean  @default(true)
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, model, size, material, water, shape])
+  @@index([workspaceId, active])
+}
+
+model Order {
+  id             String     @id @default(cuid())
+  workspaceId    String
+  contactId      String
+  conversationId String?
+  // Full spec the customer configured.
+  config         Json       @default("{}")
+  stage          OrderStage @default(awaiting_review)
+  quantity       Int        @default(0)
+  subtotalPaise  Int        @default(0)
+  taxPaise       Int        @default(0)
+  totalPaise     Int        @default(0)
+  currency       String     @default("INR")
+  razorpayLinkId    String?
+  razorpayPaymentId String?
+  quotationUrl   String?
+  invoiceUrl     String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact      Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id])
+  quote        Quote?
+  payments     Payment[]
+  shipment     Shipment?
+
+  @@index([workspaceId, stage])
+  @@index([contactId])
+}
+
+model Quote {
+  id          String      @id @default(cuid())
+  workspaceId String
+  contactId   String
+  orderId     String?     @unique
+  config      Json        @default("{}")
+  amountPaise Int         @default(0)
+  status      QuoteStatus @default(draft)
+  pdfUrl      String?
+  validUntil  DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  order     Order?    @relation(fields: [orderId], references: [id])
+
+  @@index([workspaceId, status])
+}
+
+model Payment {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  orderId       String
+  provider      String   @default("razorpay")
+  providerRefId String?
+  amountPaise   Int
+  status        String   @default("created")
+  raw           Json?
+  createdAt     DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+model Shipment {
+  id          String    @id @default(cuid())
+  workspaceId String
+  orderId     String    @unique
+  provider    String    @default("shiprocket")
+  awb         String?
+  courier     String?
+  status      String    @default("pending")
+  trackingUrl String?
+  raw         Json?
+  lastPolledAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+// ─────────────────────────── Campaigns (M4) ───────────────────────────
+
+model Campaign {
+  id             String         @id @default(cuid())
+  workspaceId    String
+  name           String
+  channel        ChannelType    @default(whatsapp)
+  audienceFilter Json           @default("{}")
+  message        Json           @default("{}")
+  status         CampaignStatus @default(draft)
+  scheduleAt     DateTime?
+  metrics        Json           @default("{}")
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  workspace  Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  recipients CampaignRecipient[]
+
+  @@index([workspaceId, status])
+}
+
+model CampaignRecipient {
+  id         String    @id @default(cuid())
+  campaignId String
+  contactId  String
+  status     String    @default("pending")
+  sentAt     DateTime?
+  error      String?
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, status])
+}
+
+// ─────────────────────────── Screenshot import (M3) ───────────────────────────
+
+model ScreenshotImport {
+  id             String       @id @default(cuid())
+  workspaceId    String
+  uploaderId     String?
+  imageKey       String // S3 key / local path
+  status         ImportStatus @default(pending)
+  // Claude vision extraction result: { name, phone, enquiryType, summary }
+  extracted      Json?
+  contactId      String?
+  conversationId String?
+  createdAt      DateTime     @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+}
+
+// ─────────────────────────── AI config + knowledge ───────────────────────────
+
+model AiConfig {
+  id             String     @id @default(cuid())
+  workspaceId    String     @unique
+  persona        String     @default("")
+  autonomy       AiAutonomy @default(full_auto)
+  businessHours  Json       @default("{}")
+  escalationRules Json      @default("{}")
+  enabledTools   String[]   @default([])
+  model          String?
+  updatedAt      DateTime   @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model KnowledgeDoc {
+  id          String   @id @default(cuid())
+  workspaceId String
+  title       String
+  content     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+// ─────────────────────────── Integrations (public API / webhooks) ───────────────────────────
+
+model WebhookEndpoint {
+  id          String   @id @default(cuid())
+  workspaceId String
+  url         String
+  // Encrypted signing secret.
+  encryptedSecret String
+  events      String[] @default([])
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  prefix      String // first chars shown in UI
+  hashedKey   String    @unique
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+// ─────────────────────────── Audit ───────────────────────────
+
+model AuditEvent {
+  id          String   @id @default(cuid())
+  workspaceId String
+  actor       String // "ai" | "human:<userId>" | "system"
+  action      String // "message.sent", "quote.created", "order.stage_changed", ...
+  entityType  String?
+  entityId    String?
+  meta        Json     @default("{}")
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+}
