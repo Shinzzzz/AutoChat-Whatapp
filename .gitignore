@@ -36,3 +36,5 @@ infra/node_modules/
 
 # uploads (local dev)
 /tmp-uploads/
+.uploads/
+**/.uploads/

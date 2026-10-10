@@ -9,6 +9,14 @@
 import { prisma } from "@autochat/db";
 import { ingestInbound } from "@autochat/engine";
 import { randomId } from "@autochat/core";
+import {
+  getCommerceProvider,
+  priceQuote,
+  acceptQuote,
+  markOrderPaid,
+  createOrderShipment,
+  refreshTracking,
+} from "@autochat/commerce";
 
 async function main() {
   const ws = await prisma.workspace.findUniqueOrThrow({ where: { slug: "aquamedia" } });
@@ -40,9 +48,31 @@ async function main() {
   }
 
   const aiReply = messages.find((m) => m.sender === "ai");
-  const audit = await prisma.auditEvent.findMany({
-    where: { workspaceId: ws.id, entityId: result.conversationId },
+
+  // ── M2: full revenue path ─────────────────────────────────────────────
+  const commerce = getCommerceProvider(ws.id);
+  const draft = await commerce.createQuoteDraft({
+    workspaceId: ws.id,
+    contactId: result.contactId,
+    conversationId: result.conversationId,
+    spec: { model: "vanity", size: "500ml", material: "glass", water: "ro", quantity: 1000 },
   });
+  await priceQuote(ws.id, draft.orderId, { unitPriceInr: 12, gstPercent: 18 });
+  await acceptQuote(ws.id, draft.orderId);
+  const link = await commerce.createPaymentLink(ws.id, draft.orderId);
+  await markOrderPaid(ws.id, draft.orderId, "sim_pay_123");
+  await createOrderShipment(ws.id, draft.orderId);
+  await refreshTracking(ws.id, draft.orderId);
+
+  const order = await prisma.order.findUniqueOrThrow({
+    where: { id: draft.orderId },
+    include: { shipment: true, payments: true },
+  });
+  console.log("\nRevenue path:");
+  console.log(`  quote ₹12 × 1000 + 18% GST → total ${(order.totalPaise / 100).toLocaleString("en-IN")}`);
+  console.log(`  payment link: ${link.url}${link.mock ? " (mock)" : ""}`);
+  console.log(`  invoice: ${order.invoiceUrl}`);
+  console.log(`  shipment: ${order.shipment?.status} (${order.shipment?.awb})`);
 
   console.log("\nAssertions:");
   const checks: [string, boolean][] = [
@@ -51,7 +81,13 @@ async function main() {
     ["reply mentions price", !!aiReply?.text && /₹|price/i.test(aiReply.text)],
     ["outbound marked sent", messages.some((m) => m.direction === "outbound" && m.deliveryStatus === "sent")],
     ["contact captured", !!(await prisma.contact.findFirst({ where: { workspaceId: ws.id, phones: { has: "+919000000001" } } }))],
-    ["audit written", audit.length >= 0],
+    ["quote priced w/ GST", order.subtotalPaise === 1200000 && order.taxPaise === 216000 && order.totalPaise === 1416000],
+    ["quotation PDF generated", !!order.quotationUrl],
+    ["payment link created", !!order.razorpayLinkId && !!link.url],
+    ["order marked paid", !!order.razorpayPaymentId],
+    ["invoice PDF generated", !!order.invoiceUrl],
+    ["payment row paid", order.payments.some((p) => p.status === "paid")],
+    ["shipment created + tracked", !!order.shipment?.awb && !!order.shipment?.status],
   ];
   let ok = true;
   for (const [name, pass] of checks) {

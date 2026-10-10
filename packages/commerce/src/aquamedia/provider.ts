@@ -1,5 +1,6 @@
 import { prisma, Prisma } from "@autochat/db";
 import { mockFlags } from "@autochat/core";
+import { createRazorpayLink } from "../payments/razorpay.js";
 import type {
   Catalog,
   CommerceProvider,
@@ -191,23 +192,34 @@ export class AquaMediaProvider implements CommerceProvider {
   ): Promise<PaymentLink> {
     const order = await prisma.order.findFirstOrThrow({
       where: { id: orderId, workspaceId },
+      include: { contact: true, workspace: true },
     });
-    // Razorpay integration lands in M2; return a mock link until then.
-    if (mockFlags().razorpay) {
-      const linkId = `mock_plink_${orderId.slice(-6)}`;
-      await prisma.order.update({
-        where: { id: orderId },
-        data: { razorpayLinkId: linkId },
-      });
-      return {
-        url: `${process.env.PUBLIC_BASE_URL ?? "http://localhost:3000"}/pay/mock/${orderId}`,
-        linkId,
-        amountPaise: order.totalPaise,
-        mock: true,
-      };
-    }
-    // Real Razorpay path implemented in M2.
-    throw new Error("Razorpay payment links are implemented in milestone M2");
+    const amountPaise = order.totalPaise || order.subtotalPaise;
+    const link = await createRazorpayLink({
+      amountPaise,
+      description: `${order.workspace.brandName} order ${order.id.slice(-6).toUpperCase()}`,
+      referenceId: order.id,
+      customerName: order.contact.name ?? undefined,
+      customerContact: order.contact.phones[0],
+      customerEmail: order.contact.emails[0],
+      callbackUrl: `${(process.env.PUBLIC_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "")}/pay/callback`,
+    });
+
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { razorpayLinkId: link.linkId },
+    });
+    await prisma.payment.create({
+      data: {
+        workspaceId,
+        orderId,
+        provider: "razorpay",
+        providerRefId: link.linkId,
+        amountPaise,
+        status: "created",
+      },
+    });
+    return { url: link.url, linkId: link.linkId, amountPaise, mock: link.mock };
   }
 }
 

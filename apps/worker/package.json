@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@autochat/core": "workspace:*",
+    "@autochat/commerce": "workspace:*",
     "@autochat/db": "workspace:*",
     "@autochat/engine": "workspace:*",
     "bullmq": "5.34.5"

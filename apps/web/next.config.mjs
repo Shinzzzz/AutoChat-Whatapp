@@ -14,7 +14,7 @@ const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: false },
   // Prisma, ioredis, bullmq and the Anthropic SDK are server-only native-ish deps.
-  serverExternalPackages: ["@prisma/client", "ioredis", "bullmq", "@anthropic-ai/sdk"],
+  serverExternalPackages: ["@prisma/client", "ioredis", "bullmq", "@anthropic-ai/sdk", "pdfkit"],
   // Our source uses Node-ESM-style ".js" import specifiers that point at ".ts"
   // files (so the worker/tsx can run the same code). Teach webpack to resolve them.
   webpack(config) {

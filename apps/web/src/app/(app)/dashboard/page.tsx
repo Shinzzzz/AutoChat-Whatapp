@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { prisma } from "@autochat/db";
-import { stageLabel } from "@autochat/commerce";
 import type { OrderStage } from "@autochat/core";
 import { requireWorkspace } from "../../../lib/session.js";
 import { formatInr, timeAgo } from "../../../lib/money.js";
+import { stageLabel } from "../orders/[id]/pipeline.js";
 
 const CONNECTOR_LABELS: Record<string, string> = {
   whatsapp: "WhatsApp",
