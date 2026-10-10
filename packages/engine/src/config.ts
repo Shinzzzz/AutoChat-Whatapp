@@ -27,5 +27,10 @@ export function resolveConnectorConfig(
       appSecret: fromDb.appSecret ?? env.WHATSAPP_APP_SECRET,
     };
   }
+  if (type === "email") {
+    return { fromEmail: fromDb.fromEmail ?? env.SES_FROM_EMAIL, subject: fromDb.subject };
+  }
+  // instagram: { igId, accessToken, verifyToken, appSecret }
+  // webhook:   { secret, outboundUrl }
   return fromDb;
 }

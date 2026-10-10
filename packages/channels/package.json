@@ -14,7 +14,8 @@
     "lint": "echo \"(lint stub)\""
   },
   "dependencies": {
-    "@autochat/core": "workspace:*"
+    "@autochat/core": "workspace:*",
+    "@aws-sdk/client-sesv2": "3.726.1"
   },
   "devDependencies": {
     "typescript": "5.7.3",

@@ -62,5 +62,6 @@ export const mockFlags = (env: Env = getEnv()) => ({
   whatsapp: !(env.WHATSAPP_PHONE_NUMBER_ID && env.WHATSAPP_ACCESS_TOKEN),
   razorpay: !(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET),
   shiprocket: !(env.SHIPROCKET_EMAIL && env.SHIPROCKET_PASSWORD),
+  email: !env.SES_FROM_EMAIL,
   storage: !env.S3_BUCKET,
 });

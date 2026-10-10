@@ -17,6 +17,8 @@ import {
   createOrderShipment,
   refreshTracking,
 } from "@autochat/commerce";
+import { processScreenshotImport, confirmScreenshotImport } from "@autochat/engine";
+import { putObject } from "@autochat/core/storage";
 
 async function main() {
   const ws = await prisma.workspace.findUniqueOrThrow({ where: { slug: "aquamedia" } });
@@ -74,6 +76,23 @@ async function main() {
   console.log(`  invoice: ${order.invoiceUrl}`);
   console.log(`  shipment: ${order.shipment?.status} (${order.shipment?.awb})`);
 
+  // ── M3: screenshot import ─────────────────────────────────────────────
+  const imgKey = `ws/${ws.id}/imports/smoke-${randomId("t", 6)}`;
+  await putObject(imgKey, Buffer.from("fake-image-bytes"), "image/png");
+  const imp = await prisma.screenshotImport.create({
+    data: { workspaceId: ws.id, imageKey: imgKey, status: "pending" },
+  });
+  await processScreenshotImport(imp.id);
+  const confirmed = await confirmScreenshotImport(ws.id, imp.id, {
+    name: "Screenshot Lead",
+    phone: "+919777000111",
+  });
+  const importMsgs = confirmed
+    ? await prisma.message.findMany({ where: { conversationId: confirmed.conversationId } })
+    : [];
+  console.log("\nScreenshot import:");
+  console.log(`  created conversation ${confirmed?.conversationId} with ${importMsgs.length} messages`);
+
   console.log("\nAssertions:");
   const checks: [string, boolean][] = [
     ["inbound stored", messages.some((m) => m.sender === "contact")],
@@ -88,6 +107,9 @@ async function main() {
     ["invoice PDF generated", !!order.invoiceUrl],
     ["payment row paid", order.payments.some((p) => p.status === "paid")],
     ["shipment created + tracked", !!order.shipment?.awb && !!order.shipment?.status],
+    ["screenshot import extracted", (await prisma.screenshotImport.findUnique({ where: { id: imp.id } }))?.status === "confirmed"],
+    ["import created conversation", !!confirmed?.conversationId],
+    ["import AI replied", importMsgs.some((m) => m.sender === "ai")],
   ];
   let ok = true;
   for (const [name, pass] of checks) {

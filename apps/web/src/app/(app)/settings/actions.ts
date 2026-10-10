@@ -64,3 +64,58 @@ export async function saveWhatsAppConnector(formData: FormData): Promise<void> {
   revalidatePath("/settings");
   revalidatePath("/dashboard");
 }
+
+async function upsertConnector(
+  workspaceId: string,
+  type: "instagram" | "email" | "webhook",
+  label: string,
+  config: Record<string, string>,
+  connected: boolean,
+  meta: Record<string, string> = {},
+) {
+  await prisma.channelConnector.upsert({
+    where: { workspaceId_type: { workspaceId, type } },
+    update: {
+      encryptedConfig: encryptSecret(JSON.stringify(config)),
+      status: connected ? "connected" : "disconnected",
+      meta,
+      lastCheckAt: new Date(),
+    },
+    create: {
+      workspaceId,
+      type,
+      label,
+      encryptedConfig: encryptSecret(JSON.stringify(config)),
+      status: connected ? "connected" : "disconnected",
+      meta,
+    },
+  });
+  revalidatePath("/settings");
+  revalidatePath("/dashboard");
+}
+
+export async function saveInstagramConnector(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  const config = {
+    igId: String(formData.get("igId") || "").trim(),
+    accessToken: String(formData.get("accessToken") || "").trim(),
+    verifyToken: String(formData.get("verifyToken") || "").trim(),
+    appSecret: String(formData.get("appSecret") || "").trim(),
+  };
+  await upsertConnector(session.workspaceId, "instagram", "Instagram DMs", config, !!(config.igId && config.accessToken), { igId: config.igId });
+}
+
+export async function saveEmailConnector(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  const config = { fromEmail: String(formData.get("fromEmail") || "").trim() };
+  await upsertConnector(session.workspaceId, "email", "Email", config, !!config.fromEmail, { fromEmail: config.fromEmail });
+}
+
+export async function saveWebhookConnector(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  const config = {
+    secret: String(formData.get("secret") || "").trim(),
+    outboundUrl: String(formData.get("outboundUrl") || "").trim(),
+  };
+  await upsertConnector(session.workspaceId, "webhook", "Generic Webhook / API", config, true, {});
+}

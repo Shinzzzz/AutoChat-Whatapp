@@ -144,8 +144,8 @@ async function main() {
     meta?: Prisma.InputJsonValue;
   }[] = [
     { type: "whatsapp", label: "WhatsApp Business", status: hasWa ? "connected" : "disconnected", meta: { mock: !hasWa } },
-    { type: "instagram", label: "Instagram DMs", status: "coming_soon" },
-    { type: "email", label: "Email", status: "coming_soon" },
+    { type: "instagram", label: "Instagram DMs", status: "disconnected" },
+    { type: "email", label: "Email", status: "disconnected" },
     { type: "webhook", label: "Generic Webhook / API", status: "connected" },
     { type: "voice", label: "Voice caller", status: "coming_soon" },
   ];

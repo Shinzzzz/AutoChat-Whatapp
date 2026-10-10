@@ -1,7 +1,14 @@
 import { prisma } from "@autochat/db";
 import { getEnv } from "@autochat/core";
 import { requireWorkspace } from "../../../lib/session.js";
-import { updateBranding, updateAiConfig, saveWhatsAppConnector } from "./actions.js";
+import {
+  updateBranding,
+  updateAiConfig,
+  saveWhatsAppConnector,
+  saveInstagramConnector,
+  saveEmailConnector,
+  saveWebhookConnector,
+} from "./actions.js";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +19,11 @@ export default async function SettingsPage() {
     prisma.channelConnector.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "asc" } }),
   ]);
   const wa = connectors.find((c) => c.type === "whatsapp");
-  const webhookUrl = `${getEnv().PUBLIC_BASE_URL}/api/webhooks/whatsapp`;
+  const ig = connectors.find((c) => c.type === "instagram");
+  const email = connectors.find((c) => c.type === "email");
+  const webhook = connectors.find((c) => c.type === "webhook");
+  const base = getEnv().PUBLIC_BASE_URL.replace(/\/$/, "");
+  const webhookUrl = `${base}/api/webhooks/whatsapp`;
 
   return (
     <>
@@ -117,11 +128,59 @@ export default async function SettingsPage() {
         </form>
       </div>
 
+      {/* Instagram */}
       <div className="card" style={{ marginTop: 16 }}>
-        <h2>Instagram · Email · Voice</h2>
+        <h2>Instagram DMs (Meta)</h2>
+        <p className="muted small">
+          Webhook callback URL: <code>{base}/api/webhooks/instagram</code>. Needs an IG Business
+          account linked to a Facebook Page.
+        </p>
+        <form action={saveInstagramConnector} style={{ marginTop: 12 }}>
+          <div className="grid cols-2">
+            <div className="field"><label>Instagram account ID</label><input className="input" name="igId" defaultValue={(ig?.meta as Record<string, string>)?.igId ?? ""} /></div>
+            <div className="field"><label>Verify token</label><input className="input" name="verifyToken" defaultValue="autochat-verify" /></div>
+          </div>
+          <div className="field"><label>Access token</label><input className="input" name="accessToken" type="password" placeholder="IG Graph access token" /></div>
+          <div className="field"><label>App secret</label><input className="input" name="appSecret" type="password" /></div>
+          <button className="btn primary" type="submit">Save Instagram connector</button>
+        </form>
+      </div>
+
+      {/* Email */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <h2>Email (AWS SES)</h2>
+        <p className="muted small">
+          Sends via SES from the address below. Point an SES→SNS inbound rule at{" "}
+          <code>{base}/api/webhooks/email</code>. Leave blank to run in mock mode.
+        </p>
+        <form action={saveEmailConnector} style={{ marginTop: 12 }}>
+          <div className="field"><label>From email address</label><input className="input" name="fromEmail" type="email" defaultValue={(email?.meta as Record<string, string>)?.fromEmail ?? ""} placeholder="hello@yourdomain.com" /></div>
+          <button className="btn primary" type="submit">Save email connector</button>
+        </form>
+      </div>
+
+      {/* Generic webhook */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <h2>Generic Webhook / API</h2>
+        <p className="muted small">
+          Inbound URL: <code>{base}/api/webhooks/generic/{webhook?.id ?? "&lt;connectorId&gt;"}</code>.
+          POST <code>{`{ from, name?, text, messageId? }`}</code> signed with the shared secret in the
+          <code> x-autochat-signature</code> header.
+        </p>
+        <form action={saveWebhookConnector} style={{ marginTop: 12 }}>
+          <div className="field"><label>Shared secret (HMAC)</label><input className="input" name="secret" type="password" /></div>
+          <div className="field"><label>Outbound URL (optional)</label><input className="input" name="outboundUrl" placeholder="https://your-system/incoming" defaultValue={(webhook?.meta as Record<string, string>)?.outboundUrl ?? ""} /></div>
+          <button className="btn primary" type="submit">Save webhook connector</button>
+        </form>
+      </div>
+
+      {/* Voice */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <h2>Voice caller</h2>
         <p className="muted">
-          Instagram DMs and Email land in M3, the Voice caller in M5. Each plugs into the same
-          connector model and AI core — the dashboard already tracks their status.
+          Inbound + outbound AI voice calls (Exotel/Plivo). Structure is in place; live calling
+          turns on once a telephony account and number are connected — see the Voice panel below
+          once M5 is enabled.
         </p>
       </div>
     </>

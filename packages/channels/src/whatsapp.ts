@@ -230,3 +230,31 @@ interface WaMessage {
 }
 
 export const whatsappProvider = new WhatsAppProvider();
+
+/**
+ * Resolve a WhatsApp media id to its bytes via the Graph API (two-step: look up
+ * the media URL, then download it with the bearer token). Returns null in mock
+ * mode or on failure. Used to feed inbound images into the vision agent.
+ */
+export async function fetchWhatsAppMedia(
+  mediaId: string,
+  config: ChannelConfig,
+): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  if (!config.accessToken) return null;
+  try {
+    const metaRes = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${mediaId}`, {
+      headers: { Authorization: `Bearer ${config.accessToken}` },
+    });
+    if (!metaRes.ok) return null;
+    const meta = (await metaRes.json()) as { url?: string; mime_type?: string };
+    if (!meta.url) return null;
+    const binRes = await fetch(meta.url, {
+      headers: { Authorization: `Bearer ${config.accessToken}` },
+    });
+    if (!binRes.ok) return null;
+    const buffer = Buffer.from(await binRes.arrayBuffer());
+    return { buffer, mimeType: meta.mime_type ?? "image/jpeg" };
+  } catch {
+    return null;
+  }
+}

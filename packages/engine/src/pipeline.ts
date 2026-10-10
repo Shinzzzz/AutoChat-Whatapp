@@ -5,8 +5,10 @@ import {
   type NormalizedInbound,
   type MediaRef,
 } from "@autochat/core";
-import { getChannelProvider } from "@autochat/channels";
+import { getChannelProvider, fetchWhatsAppMedia } from "@autochat/channels";
 import { runAgentTurn, type HistoryTurn } from "@autochat/ai";
+import { putObject, fileUrl, getObject } from "@autochat/core/storage";
+import { randomId } from "@autochat/core";
 import { publishRealtime } from "./realtime.js";
 import { aiRunQueue, outboundQueue, useQueue } from "./queue.js";
 import { resolveConnectorConfig } from "./config.js";
@@ -97,6 +99,36 @@ export async function ingestInbound(args: {
     },
   });
 
+  // Best-effort: pull WhatsApp inbound images down to our storage so they render
+  // in the inbox and can be fed to the vision agent.
+  if (normalized.channel === "whatsapp" && normalized.media.some((m) => m.type === "image")) {
+    try {
+      const connector = connectorId
+        ? await prisma.channelConnector.findUnique({ where: { id: connectorId } })
+        : null;
+      const cfg = resolveConnectorConfig("whatsapp", connector?.encryptedConfig ?? null);
+      const updated: MediaRef[] = [];
+      for (const m of normalized.media) {
+        if (m.type === "image" && m.storageKey) {
+          const fetched = await fetchWhatsAppMedia(m.storageKey, cfg);
+          if (fetched) {
+            const key = `ws/${workspaceId}/media/${randomId("m", 8)}`;
+            await putObject(key, fetched.buffer, fetched.mimeType);
+            updated.push({ ...m, url: fileUrl(key), storageKey: key, mimeType: fetched.mimeType });
+            continue;
+          }
+        }
+        updated.push(m);
+      }
+      await prisma.message.update({
+        where: { id: message.id },
+        data: { media: updated as unknown as object[] },
+      });
+    } catch (e) {
+      console.error("[pipeline] media fetch failed", (e as Error).message);
+    }
+  }
+
   const preview = normalized.text ?? (normalized.media.length ? "[media]" : "");
   await prisma.conversation.update({
     where: { id: conversation.id },
@@ -165,6 +197,10 @@ export async function runAiForConversation(conversationId: string): Promise<void
     }));
   if (history.length === 0 || history[history.length - 1]!.role !== "user") return;
 
+  // Load any images on the latest inbound message for the vision agent.
+  const lastInbound = [...recent].reverse().find((m) => m.direction === "inbound");
+  const images = lastInbound ? await loadStoredImages(lastInbound.media) : [];
+
   const result = await runAgentTurn({
     workspaceId: convo.workspaceId,
     conversationId,
@@ -175,6 +211,7 @@ export async function runAiForConversation(conversationId: string): Promise<void
     autonomy: (aiConfig?.autonomy as "full_auto" | "assist" | "off") ?? "full_auto",
     model: aiConfig?.model,
     history,
+    images: images.length ? images : undefined,
   });
 
   const aiMessage = await prisma.message.create({
@@ -295,6 +332,23 @@ export async function sendOutboundMessage(messageId: string): Promise<void> {
   await publishRealtime(msg.workspaceId, SOCKET_EVENTS.conversationUpdated, {
     conversationId: convo.id,
   });
+}
+
+/** Load up to 2 stored image attachments as base64 for the vision agent. */
+async function loadStoredImages(
+  media: unknown,
+): Promise<{ base64: string; mimeType: string }[]> {
+  const refs = (media as MediaRef[]) ?? [];
+  const out: { base64: string; mimeType: string }[] = [];
+  for (const m of refs) {
+    if (m.type !== "image" || !m.storageKey || !m.storageKey.startsWith("ws/")) continue;
+    const obj = await getObject(m.storageKey);
+    if (obj) {
+      out.push({ base64: obj.body.toString("base64"), mimeType: obj.contentType });
+      if (out.length >= 2) break;
+    }
+  }
+  return out;
 }
 
 function serializeMessage(m: {
