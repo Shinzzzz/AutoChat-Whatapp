@@ -17,7 +17,7 @@ import {
   createOrderShipment,
   refreshTracking,
 } from "@autochat/commerce";
-import { processScreenshotImport, confirmScreenshotImport } from "@autochat/engine";
+import { processScreenshotImport, confirmScreenshotImport, sendCampaign } from "@autochat/engine";
 import { putObject } from "@autochat/core/storage";
 
 async function main() {
@@ -93,6 +93,21 @@ async function main() {
   console.log("\nScreenshot import:");
   console.log(`  created conversation ${confirmed?.conversationId} with ${importMsgs.length} messages`);
 
+  // ── M4: campaign send ─────────────────────────────────────────────────
+  const campaign = await prisma.campaign.create({
+    data: {
+      workspaceId: ws.id,
+      name: "Smoke festive offer",
+      channel: "whatsapp",
+      audienceFilter: {},
+      message: { text: "Festive offer: 10% off branded bottles this month!" },
+      status: "draft",
+    },
+  });
+  const campaignResult = await sendCampaign(campaign.id);
+  console.log("\nCampaign:");
+  console.log(`  audience ${campaignResult.audience}, sent ${campaignResult.sent}, failed ${campaignResult.failed}`);
+
   console.log("\nAssertions:");
   const checks: [string, boolean][] = [
     ["inbound stored", messages.some((m) => m.sender === "contact")],
@@ -110,6 +125,7 @@ async function main() {
     ["screenshot import extracted", (await prisma.screenshotImport.findUnique({ where: { id: imp.id } }))?.status === "confirmed"],
     ["import created conversation", !!confirmed?.conversationId],
     ["import AI replied", importMsgs.some((m) => m.sender === "ai")],
+    ["campaign sent to audience", campaignResult.audience > 0 && campaignResult.sent > 0],
   ];
   let ok = true;
   for (const [name, pass] of checks) {

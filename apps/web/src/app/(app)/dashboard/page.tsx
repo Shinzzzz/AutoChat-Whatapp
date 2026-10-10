@@ -19,12 +19,17 @@ export default async function DashboardPage() {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
 
+  const weekAgo = new Date(Date.now() - 6 * 24 * 3600 * 1000);
+  weekAgo.setHours(0, 0, 0, 0);
+
   const [
     connectors,
     openConvos,
     needsHuman,
+    totalConvos,
     totalContacts,
     leadsToday,
+    recentContacts,
     orders,
     paidAgg,
     quotes,
@@ -33,8 +38,10 @@ export default async function DashboardPage() {
     prisma.channelConnector.findMany({ where: { workspaceId: wsId }, orderBy: { createdAt: "asc" } }),
     prisma.conversation.count({ where: { workspaceId: wsId, status: { in: ["open", "ai_handling"] } } }),
     prisma.conversation.count({ where: { workspaceId: wsId, status: "needs_human" } }),
+    prisma.conversation.count({ where: { workspaceId: wsId } }),
     prisma.contact.count({ where: { workspaceId: wsId } }),
     prisma.contact.count({ where: { workspaceId: wsId, createdAt: { gte: startOfDay } } }),
+    prisma.contact.findMany({ where: { workspaceId: wsId, createdAt: { gte: weekAgo } }, select: { createdAt: true } }),
     prisma.order.groupBy({ by: ["stage"], where: { workspaceId: wsId }, _count: true }),
     prisma.order.aggregate({ where: { workspaceId: wsId, razorpayPaymentId: { not: null } }, _sum: { totalPaise: true } }),
     prisma.quote.count({ where: { workspaceId: wsId } }),
@@ -43,6 +50,19 @@ export default async function DashboardPage() {
 
   const revenue = paidAgg._sum.totalPaise ?? 0;
   const ordersByStage = new Map<string, number>(orders.map((o) => [o.stage, o._count]));
+  const aiHandledPct = totalConvos > 0 ? Math.round(((totalConvos - needsHuman) / totalConvos) * 100) : 100;
+
+  // Bucket new leads into the last 7 days.
+  const days: { label: string; count: number }[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 24 * 3600 * 1000);
+    days.push({ label: d.toLocaleDateString("en-IN", { weekday: "short" })[0] ?? "", count: 0 });
+  }
+  for (const c of recentContacts) {
+    const idx = Math.floor((c.createdAt.getTime() - weekAgo.getTime()) / (24 * 3600 * 1000));
+    if (idx >= 0 && idx < 7) days[idx]!.count++;
+  }
+  const maxLeads = Math.max(1, ...days.map((d) => d.count));
 
   return (
     <>
@@ -112,6 +132,48 @@ export default async function DashboardPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* Analytics */}
+      <div className="grid cols-2" style={{ marginBottom: 16 }}>
+        <div className="card">
+          <h3>New leads · last 7 days</h3>
+          {(() => {
+            const W = 320, H = 96, pad = 18, gap = 2;
+            const bw = (W - (days.length - 1) * gap) / days.length;
+            const plotH = H - pad;
+            return (
+              <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img"
+                   aria-label={`New leads per day over the last 7 days; peak ${maxLeads}`} style={{ marginTop: 8 }}>
+                <title>New leads per day (last 7 days)</title>
+                <line x1="0" y1={plotH} x2={W} y2={plotH} stroke="var(--border)" strokeWidth="1" />
+                {days.map((d, i) => {
+                  const h = d.count === 0 ? 0 : Math.max(3, (d.count / maxLeads) * (plotH - 6));
+                  const x = i * (bw + gap);
+                  const y = plotH - h;
+                  const isMax = d.count === maxLeads && d.count > 0;
+                  return (
+                    <g key={i}>
+                      <rect x={x} y={y} width={bw} height={h} rx="4" fill="var(--brand-primary)" opacity={isMax ? 1 : 0.55}>
+                        <title>{`${d.count} lead${d.count === 1 ? "" : "s"}`}</title>
+                      </rect>
+                      {isMax && <text x={x + bw / 2} y={y - 4} textAnchor="middle" fontSize="9" fill="var(--text-muted)">{d.count}</text>}
+                      <text x={x + bw / 2} y={H - 4} textAnchor="middle" fontSize="9" fill="var(--text-muted)">{d.label}</text>
+                    </g>
+                  );
+                })}
+              </svg>
+            );
+          })()}
+        </div>
+        <div className="card">
+          <h3>AI-handled conversations</h3>
+          <div className="stat">{aiHandledPct}%</div>
+          <div className="small muted">{needsHuman} of {totalConvos} currently need a human</div>
+          <div style={{ marginTop: 12, height: 8, background: "var(--surface-2)", borderRadius: 999, overflow: "hidden" }}>
+            <div style={{ width: `${aiHandledPct}%`, height: "100%", background: "var(--brand-primary)" }} />
+          </div>
         </div>
       </div>
 
