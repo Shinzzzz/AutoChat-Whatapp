@@ -23,6 +23,8 @@ export interface AgentTurnInput {
   history: HistoryTurn[];
   /** Images attached to the latest inbound message (vision). */
   images?: { base64: string; mimeType: string }[];
+  /** RAG: relevant knowledge retrieved for this turn, injected after the cached prefix. */
+  retrievedContext?: string;
 }
 
 export interface ToolInvocation {
@@ -90,6 +92,22 @@ export async function runAgentTurn(
     }
     return { role: h.role, content: h.text };
   });
+
+  // RAG: attach retrieved knowledge to the latest user turn (after the cached
+  // system prefix, so prompt caching is preserved).
+  if (input.retrievedContext && input.retrievedContext.trim()) {
+    const last = messages[messages.length - 1];
+    if (last && last.role === "user") {
+      const ctxBlock: Anthropic.ContentBlockParam = {
+        type: "text",
+        text: `(Reference knowledge — use if relevant; prefer tool results for live prices/orders):\n${input.retrievedContext}`,
+      };
+      last.content =
+        typeof last.content === "string"
+          ? [{ type: "text", text: last.content }, ctxBlock]
+          : [...last.content, ctxBlock];
+    }
+  }
 
   const toolInvocations: ToolInvocation[] = [];
   let replyText = "";

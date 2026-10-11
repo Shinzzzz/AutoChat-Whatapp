@@ -180,6 +180,10 @@ export function InboxClient() {
               ) : (
                 <button className="btn small" disabled={busy} onClick={() => action("takeover")}>Take over</button>
               )}
+              <button className="btn small" disabled={busy} onClick={() => action("learn")} title="Distill durable knowledge from this chat">Learn</button>
+              {current.status !== "closed" && (
+                <button className="btn small" disabled={busy} onClick={() => action("close")} title="Close + save to contact memory">Close</button>
+              )}
             </div>
           )}
         </div>

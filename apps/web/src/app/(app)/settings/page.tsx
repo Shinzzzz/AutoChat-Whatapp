@@ -8,6 +8,8 @@ import {
   saveInstagramConnector,
   saveEmailConnector,
   saveWebhookConnector,
+  addKnowledgeDoc,
+  reindexKnowledge,
 } from "./actions.js";
 import { VoiceDemo } from "./VoiceDemo.js";
 
@@ -15,9 +17,12 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const { workspace } = await requireWorkspace();
-  const [ai, connectors] = await Promise.all([
+  const [ai, connectors, docs, chunkCount, learnedCount] = await Promise.all([
     prisma.aiConfig.findUnique({ where: { workspaceId: workspace.id } }),
     prisma.channelConnector.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "asc" } }),
+    prisma.knowledgeDoc.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "asc" } }),
+    prisma.knowledgeChunk.count({ where: { workspaceId: workspace.id } }),
+    prisma.learnedItem.count({ where: { workspaceId: workspace.id, status: "approved" } }),
   ]);
   const wa = connectors.find((c) => c.type === "whatsapp");
   const ig = connectors.find((c) => c.type === "instagram");
@@ -83,6 +88,36 @@ export default async function SettingsPage() {
             <button className="btn primary" type="submit">Save AI settings</button>
           </form>
         </div>
+      </div>
+
+      {/* Knowledge (RAG) */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <h2>Knowledge base (RAG)</h2>
+        <p className="muted small">
+          Docs are chunked + embedded for retrieval. The AI pulls the most relevant pieces per
+          message and learns more from approved items in <a href="/learning">AI Learning</a>.
+          Currently <strong>{chunkCount}</strong> retrievable chunks · <strong>{learnedCount}</strong> learned facts approved.
+          {" "}Embeddings: {ai ? "" : ""}{process.env.VOYAGE_API_KEY ? "Voyage AI" : "dev embedder (set VOYAGE_API_KEY for Voyage)"}.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "10px 0" }}>
+          {docs.map((d) => (
+            <div key={d.id} style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid var(--border)", paddingTop: 6 }}>
+              <strong>{d.title}</strong>
+              <span className="muted small">{d.content.length} chars</span>
+            </div>
+          ))}
+          {docs.length === 0 && <div className="muted small">No knowledge docs yet.</div>}
+        </div>
+        <form action={addKnowledgeDoc}>
+          <div className="field"><label>Add a knowledge doc — title</label><input className="input" name="title" placeholder="Returns & refunds policy" /></div>
+          <div className="field"><label>Content</label><textarea className="input" name="content" placeholder="Paste a policy, FAQ, product details…" /></div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn primary" type="submit">Add &amp; index</button>
+          </div>
+        </form>
+        <form action={reindexKnowledge} style={{ marginTop: 8 }}>
+          <button className="btn small" type="submit">Reindex all</button>
+        </form>
       </div>
 
       {/* Connectors */}

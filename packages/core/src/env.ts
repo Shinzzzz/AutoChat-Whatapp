@@ -21,6 +21,10 @@ const EnvSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().optional(),
 
+  // Embeddings for RAG (Voyage AI). Absent => a deterministic dev embedder is used.
+  VOYAGE_API_KEY: z.string().optional(),
+  VOYAGE_MODEL: z.string().default("voyage-3.5"),
+
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
   WHATSAPP_ACCESS_TOKEN: z.string().optional(),
   WHATSAPP_VERIFY_TOKEN: z.string().default("autochat-verify"),
@@ -71,4 +75,5 @@ export const mockFlags = (env: Env = getEnv()) => ({
   email: !env.SES_FROM_EMAIL,
   storage: !env.S3_BUCKET,
   voice: !(env.VOICE_ACCOUNT_SID && env.VOICE_API_TOKEN),
+  embeddings: !env.VOYAGE_API_KEY,
 });

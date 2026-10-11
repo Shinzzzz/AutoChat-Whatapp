@@ -112,6 +112,8 @@ async function main() {
       data: { workspaceId: workspace.id, title: "Business knowledge", content: KNOWLEDGE },
     });
   }
+  // Note: run Settings → "Reindex all" (or the worker's `index` script) to embed
+  // docs for RAG; kept out of the DB seed to avoid a package cycle (engine→db).
 
   // Pricing rules (findFirst + create/update to handle the nullable `shape` key).
   for (const r of DEFAULT_PRICING) {

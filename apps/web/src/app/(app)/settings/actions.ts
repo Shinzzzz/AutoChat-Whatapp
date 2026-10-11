@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@autochat/db";
 import { encryptSecret } from "@autochat/core";
+import { indexDoc, reindexWorkspace } from "@autochat/engine";
 import { requireSession } from "../../../lib/session.js";
 
 export async function updateBranding(formData: FormData): Promise<void> {
@@ -118,4 +119,23 @@ export async function saveWebhookConnector(formData: FormData): Promise<void> {
     outboundUrl: String(formData.get("outboundUrl") || "").trim(),
   };
   await upsertConnector(session.workspaceId, "webhook", "Generic Webhook / API", config, true, {});
+}
+
+/** Add a knowledge doc and index it for retrieval (RAG). */
+export async function addKnowledgeDoc(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  const title = String(formData.get("title") || "").trim();
+  const content = String(formData.get("content") || "").trim();
+  if (!title || !content) return;
+  const doc = await prisma.knowledgeDoc.create({
+    data: { workspaceId: session.workspaceId, title, content },
+  });
+  await indexDoc(doc.id);
+  revalidatePath("/settings");
+}
+
+export async function reindexKnowledge(): Promise<void> {
+  const session = await requireSession();
+  await reindexWorkspace(session.workspaceId);
+  revalidatePath("/settings");
 }

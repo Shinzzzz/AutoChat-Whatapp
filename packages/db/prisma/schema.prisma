@@ -148,6 +148,8 @@ model Workspace {
   campaigns        Campaign[]
   screenshots      ScreenshotImport[]
   knowledgeDocs    KnowledgeDoc[]
+  knowledgeChunks  KnowledgeChunk[]
+  learnedItems     LearnedItem[]
   webhookEndpoints WebhookEndpoint[]
   apiKeys          ApiKey[]
   auditEvents      AuditEvent[]
@@ -465,8 +467,55 @@ model KnowledgeDoc {
   updatedAt   DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  chunks    KnowledgeChunk[]
 
   @@index([workspaceId])
+}
+
+/// A retrievable, embedded piece of knowledge (RAG). Sources: a knowledge doc,
+/// an approved learned item, or a per-contact memory summary.
+model KnowledgeChunk {
+  id          String   @id @default(cuid())
+  workspaceId String
+  source      String // "doc" | "learned" | "contact_memory"
+  docId       String?
+  contactId   String?
+  title       String?
+  text        String
+  embedding   Float[]  @default([])
+  priority    Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  doc       KnowledgeDoc? @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, source])
+  @@index([docId])
+}
+
+enum LearnedStatus {
+  pending
+  approved
+  rejected
+}
+
+/// A candidate piece of knowledge the AI distilled from a resolved conversation.
+/// Nothing affects future answers until a human approves it (→ a KnowledgeChunk).
+model LearnedItem {
+  id             String        @id @default(cuid())
+  workspaceId    String
+  conversationId String?
+  type           String        @default("qa") // "qa" | "fact" | "objection"
+  question       String?
+  answer         String
+  confidence     Float         @default(0)
+  converted      Boolean       @default(false)
+  status         LearnedStatus @default(pending)
+  createdAt      DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
 }
 
 // ─────────────────────────── Integrations (public API / webhooks) ───────────────────────────

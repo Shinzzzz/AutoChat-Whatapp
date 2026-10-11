@@ -48,6 +48,12 @@ export default async function DashboardPage() {
     prisma.auditEvent.findMany({ where: { workspaceId: wsId }, orderBy: { createdAt: "desc" }, take: 8 }),
   ]);
 
+  const [knowledgeChunks, learnedApproved, learnedPending] = await Promise.all([
+    prisma.knowledgeChunk.count({ where: { workspaceId: wsId } }),
+    prisma.learnedItem.count({ where: { workspaceId: wsId, status: "approved" } }),
+    prisma.learnedItem.count({ where: { workspaceId: wsId, status: "pending" } }),
+  ]);
+
   const revenue = paidAgg._sum.totalPaise ?? 0;
   const ordersByStage = new Map<string, number>(orders.map((o) => [o.stage, o._count]));
   const aiHandledPct = totalConvos > 0 ? Math.round(((totalConvos - needsHuman) / totalConvos) * 100) : 100;
@@ -173,6 +179,19 @@ export default async function DashboardPage() {
           <div className="small muted">{needsHuman} of {totalConvos} currently need a human</div>
           <div style={{ marginTop: 12, height: 8, background: "var(--surface-2)", borderRadius: 999, overflow: "hidden" }}>
             <div style={{ width: `${aiHandledPct}%`, height: "100%", background: "var(--brand-primary)" }} />
+          </div>
+        </div>
+      </div>
+
+      {/* AI expertise (grows as it learns) */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3>AI expertise</h3>
+        <div className="grid cols-3" style={{ marginTop: 8 }}>
+          <div><div className="stat">{knowledgeChunks}</div><div className="small muted">retrievable knowledge chunks</div></div>
+          <div><div className="stat">{learnedApproved}</div><div className="small muted">facts learned from chats</div></div>
+          <div>
+            <div className="stat" style={{ color: learnedPending ? "var(--brand-primary)" : undefined }}>{learnedPending}</div>
+            <div className="small muted">pending to review · <a href="/learning">teach the AI →</a></div>
           </div>
         </div>
       </div>

@@ -6,7 +6,7 @@ import {
   type MediaRef,
 } from "@autochat/core";
 import { getChannelProvider, fetchWhatsAppMedia } from "@autochat/channels";
-import { runAgentTurn, type HistoryTurn } from "@autochat/ai";
+import { runAgentTurn, retrieve, formatRetrieved, type HistoryTurn } from "@autochat/ai";
 import { putObject, fileUrl, getObject } from "@autochat/core/storage";
 import { randomId } from "@autochat/core";
 import { publishRealtime } from "./realtime.js";
@@ -201,6 +201,10 @@ export async function runAiForConversation(conversationId: string): Promise<void
   const lastInbound = [...recent].reverse().find((m) => m.direction === "inbound");
   const images = lastInbound ? await loadStoredImages(lastInbound.media) : [];
 
+  // RAG: retrieve relevant knowledge (incl. this contact's memory) for the query.
+  const query = history[history.length - 1]!.text;
+  const retrieved = await retrieve(convo.workspaceId, query, { contactId: convo.contactId, k: 5 });
+
   const result = await runAgentTurn({
     workspaceId: convo.workspaceId,
     conversationId,
@@ -212,6 +216,7 @@ export async function runAiForConversation(conversationId: string): Promise<void
     model: aiConfig?.model,
     history,
     images: images.length ? images : undefined,
+    retrievedContext: retrieved.length ? formatRetrieved(retrieved) : undefined,
   });
 
   const aiMessage = await prisma.message.create({

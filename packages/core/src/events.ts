@@ -11,6 +11,7 @@ export const QUEUES = {
   tracking: "tracking-poll",
   screenshot: "screenshot-import",
   voiceCall: "voice-call",
+  learn: "learn-distill",
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];

@@ -1,6 +1,6 @@
 import { prisma } from "@autochat/db";
 import { SOCKET_EVENTS } from "@autochat/core";
-import { publishRealtime, runAiForConversation } from "@autochat/engine";
+import { publishRealtime, runAiForConversation, closeConversation, distillConversation } from "@autochat/engine";
 import { apiSession, json, unauthorized } from "../../../../../lib/api.js";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +40,13 @@ export async function POST(
         data: { status: "ai_handling", assigneeId: null },
       });
       await runAiForConversation(id);
+      break;
+    case "close":
+      // Close + summarize into contact memory + queue learning.
+      await closeConversation(session.workspaceId, id);
+      break;
+    case "learn":
+      await distillConversation(id);
       break;
     default:
       return json({ error: "unknown action" }, 400);

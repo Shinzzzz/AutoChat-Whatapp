@@ -17,7 +17,16 @@ import {
   createOrderShipment,
   refreshTracking,
 } from "@autochat/commerce";
-import { processScreenshotImport, confirmScreenshotImport, sendCampaign, runMockVoiceCall } from "@autochat/engine";
+import {
+  processScreenshotImport,
+  confirmScreenshotImport,
+  sendCampaign,
+  runMockVoiceCall,
+  reindexWorkspace,
+  distillConversation,
+  approveLearnedItem,
+} from "@autochat/engine";
+import { retrieve } from "@autochat/ai";
 import { putObject } from "@autochat/core/storage";
 
 async function main() {
@@ -118,6 +127,21 @@ async function main() {
   console.log("\nVoice (mock) call:");
   voice?.turns.forEach((t) => console.log(`  🗣️ ${t.caller}\n  🤖 ${t.agent}`));
 
+  // ── M6: RAG + learning ────────────────────────────────────────────────
+  const indexed = await reindexWorkspace(ws.id);
+  const hits = await retrieve(ws.id, "what shapes do the 1 litre glass bottles come in?", { k: 3 });
+  const distilled = confirmed ? await distillConversation(result.conversationId) : 0;
+  const pending = await prisma.learnedItem.findFirst({
+    where: { workspaceId: ws.id, status: "pending" },
+    orderBy: { createdAt: "desc" },
+  });
+  const beforeLearned = await prisma.knowledgeChunk.count({ where: { workspaceId: ws.id, source: "learned" } });
+  if (pending) await approveLearnedItem(ws.id, pending.id);
+  const afterLearned = await prisma.knowledgeChunk.count({ where: { workspaceId: ws.id, source: "learned" } });
+  console.log("\nRAG + learning:");
+  console.log(`  indexed ${indexed} chunks; top hit score ${hits[0]?.score.toFixed(3)} :: ${hits[0]?.text.slice(0, 70)}…`);
+  console.log(`  distilled ${distilled} candidate(s); learned chunks ${beforeLearned} → ${afterLearned}`);
+
   console.log("\nAssertions:");
   const checks: [string, boolean][] = [
     ["inbound stored", messages.some((m) => m.sender === "contact")],
@@ -137,6 +161,10 @@ async function main() {
     ["import AI replied", importMsgs.some((m) => m.sender === "ai")],
     ["campaign sent to audience", campaignResult.audience > 0 && campaignResult.sent > 0],
     ["voice call ran with agent replies", !!voice && voice.turns.length === 2 && voice.turns.every((t) => t.agent.length > 0)],
+    ["knowledge indexed", indexed > 0],
+    ["RAG retrieved a relevant chunk", hits.length > 0 && /shape|round|square|zen|pyramid/i.test(hits[0]?.text ?? "")],
+    ["conversation distilled a learned item", distilled > 0 && !!pending],
+    ["approval promoted it to a retrievable chunk", afterLearned === beforeLearned + 1],
   ];
   let ok = true;
   for (const [name, pass] of checks) {

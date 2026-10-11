@@ -11,10 +11,11 @@ const LINKS: { href: string; label: string; ico: string }[] = [
   { href: "/pricing", label: "Pricing", ico: "₹" },
   { href: "/campaigns", label: "Campaigns", ico: "➤" },
   { href: "/imports", label: "Screenshot import", ico: "⬆" },
+  { href: "/learning", label: "AI Learning", ico: "✦" },
   { href: "/settings", label: "Settings", ico: "⚙" },
 ];
 
-export function NavLinks({ needsHuman }: { needsHuman: number }) {
+export function NavLinks({ needsHuman, pendingLearned = 0 }: { needsHuman: number; pendingLearned?: number }) {
   const path = usePathname();
   return (
     <nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -26,6 +27,9 @@ export function NavLinks({ needsHuman }: { needsHuman: number }) {
             {l.label}
             {l.href === "/inbox" && needsHuman > 0 && (
               <span className="nav-badge">{needsHuman}</span>
+            )}
+            {l.href === "/learning" && pendingLearned > 0 && (
+              <span className="nav-badge" style={{ background: "var(--brand-primary)" }}>{pendingLearned}</span>
             )}
           </Link>
         );

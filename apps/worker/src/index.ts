@@ -4,7 +4,7 @@ import {
   type AiRunJob,
   type OutboundSendJob,
 } from "@autochat/core";
-import { newRedis, runAiForConversation, sendOutboundMessage } from "@autochat/engine";
+import { newRedis, runAiForConversation, sendOutboundMessage, distillConversation } from "@autochat/engine";
 
 /**
  * AutoChat background worker. Consumes AI-run and outbound-send jobs so the web
@@ -31,9 +31,19 @@ const outboundWorker = new Worker<OutboundSendJob>(
   { connection: newRedis(), concurrency: 10 },
 );
 
+const learnWorker = new Worker<{ conversationId: string }>(
+  QUEUES.learn,
+  async (job) => {
+    console.log(`[worker] learn ${job.data.conversationId}`);
+    await distillConversation(job.data.conversationId);
+  },
+  { connection: newRedis(), concurrency: 3 },
+);
+
 for (const [name, w] of [
   ["ai", aiWorker],
   ["outbound", outboundWorker],
+  ["learn", learnWorker],
 ] as const) {
   w.on("failed", (job, err) =>
     console.error(`[worker:${name}] job ${job?.id} failed:`, err.message),
@@ -42,7 +52,7 @@ for (const [name, w] of [
 
 async function shutdown() {
   console.log("[worker] shutting down…");
-  await Promise.all([aiWorker.close(), outboundWorker.close()]);
+  await Promise.all([aiWorker.close(), outboundWorker.close(), learnWorker.close()]);
   process.exit(0);
 }
 process.on("SIGTERM", shutdown);

@@ -6,3 +6,5 @@ export * from "./pipeline.js";
 export * from "./imports.js";
 export * from "./campaigns.js";
 export * from "./voice.js";
+export * from "./knowledge.js";
+export * from "./learn.js";

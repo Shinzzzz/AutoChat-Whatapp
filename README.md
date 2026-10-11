@@ -86,6 +86,22 @@ pnpm --filter @autochat/worker run smoke
 
 ---
 
+## How the AI works (RAG + learning)
+
+The agent is a Claude tool-using loop with **retrieval-augmented generation**: knowledge docs
+are chunked and embedded into `KnowledgeChunk`s (Voyage AI when `VOYAGE_API_KEY` is set, a
+deterministic dev embedder otherwise), and each turn retrieves the most relevant chunks
+(cosine similarity, in-app; pgvector is a drop-in upgrade) and attaches them to the message —
+so answers stay grounded as the corpus grows instead of stuffing the whole base into the
+prompt.
+
+It **learns, human-approved**: closing or "Learn"-ing a conversation distills durable
+knowledge (Q→A, facts, objection handling) into a review queue (**AI Learning**); an operator
+approves/edits, and approved items become retrievable chunks (answers from won deals ranked
+higher). Closed conversations also write a per-contact memory summary that is retrieved for
+returning customers. Index docs with Settings → "Reindex" or
+`pnpm --filter @autochat/worker run index`.
+
 ## Going live (add real credentials)
 
 All credentials are optional; add them in **Settings** (encrypted at rest) or via env:
@@ -114,6 +130,10 @@ All credentials are optional; add them in **Settings** (encrypted at rest) or vi
 - **M5** — voice caller: Exotel/Plivo adapter, outbound-call bridge reusing the agent core,
   call webhook, Settings demo. Full structure + mock call runner; live PSTN audio needs a
   telephony account + number. ✅
+- **M6** — RAG + continuous learning: embedded `KnowledgeChunk` store (Voyage AI, dev-embedder
+  fallback) with cosine retrieval injected per turn; a human-approved learning loop that
+  distills resolved chats into knowledge (AI Learning review queue); per-contact memory; a
+  dashboard expertise tile. The AI gets sharper the more it's used. ✅
 
 Run `pnpm --filter @autochat/worker run smoke` to exercise the whole product end-to-end
 (ingest → AI → quote → price → pay → invoice → ship → track → screenshot import → campaign →

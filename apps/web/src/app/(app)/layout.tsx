@@ -8,9 +8,10 @@ import { LogoutButton } from "../../components/LogoutButton.js";
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const { session, workspace } = await requireWorkspace();
 
-  const needsHuman = await prisma.conversation.count({
-    where: { workspaceId: workspace.id, status: "needs_human" },
-  });
+  const [needsHuman, pendingLearned] = await Promise.all([
+    prisma.conversation.count({ where: { workspaceId: workspace.id, status: "needs_human" } }),
+    prisma.learnedItem.count({ where: { workspaceId: workspace.id, status: "pending" } }),
+  ]);
 
   const themeVars = themeToCssVars({
     brandName: workspace.brandName,
@@ -33,7 +34,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           )}
           {workspace.brandName}
         </div>
-        <NavLinks needsHuman={needsHuman} />
+        <NavLinks needsHuman={needsHuman} pendingLearned={pendingLearned} />
         <div className="sidebar-foot">
           <div style={{ marginBottom: 8 }}>{session.email}</div>
           <LogoutButton />
